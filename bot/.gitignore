@@ -1,0 +1,11 @@
+# 本地运行时产物（不进仓库）
+run/
+bin/
+*.db
+*.db-wal
+*.db-shm
+*.log
+__pycache__/
+*.pyc
+config.toml
+.pytest_cache/

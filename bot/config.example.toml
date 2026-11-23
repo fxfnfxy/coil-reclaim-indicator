@@ -1,0 +1,109 @@
+# ============================================================
+# Coil Reclaim 24/7 盯盘机器人 · 配置
+# 复制成 config.toml 再改。没有配置文件也能跑（signal 模式，只写日志）。
+# 敏感项建议用环境变量：COILBOT_TOKEN / COILBOT_TG_TOKEN / COILBOT_TG_CHAT ...
+# ============================================================
+
+[server]
+# 只监听本机；TradingView 通过 cloudflared 隧道进来
+host = "127.0.0.1"
+port = 8080
+path = "/webhook"
+# 必填：webhook URL 里要带的密码，例：https://xxx.trycloudflare.com/webhook?token=改这串
+token = ""
+max_body_kb = 64
+rate_limit_per_min = 240
+# 跑在 nginx/cloudflared 后面且要按真实 IP 限流时设 true
+trust_proxy = false
+
+[account]
+equity_usdt = 10000          # 账户权益，用来算仓位
+default_risk_pct = 0.5       # 数据包没给 risk_pct 时用这个
+min_target_r = 1.0           # 目标距离低于这个 R 就不做
+max_notional_multiple = 5.0  # 名义价值 ≤ 权益 × 5
+round_down = true            # 数量按步长向下取整
+
+[judge]
+allow_sessions = ["Asia", "London", "NYSE"]
+require_session_live = true      # 只在时段首小时下单
+require_clean_zone = true        # 突破必须在干净区
+require_bias_match = true        # 不逆着 bias 做
+block_when_blocked_today = true  # 顺方向顶到日线价位当天不做
+require_rubber_band_on_entry = true  # 成交时必须已经回踩
+min_range_candles = 3
+max_trades_per_session = 0       # 0 = 用数据包里的 max_trades
+stale_minutes = 30               # 包超过这么久不采纳（防重发/积压）
+
+[execution]
+# signal = 只出信号通知（默认，最安全）
+# paper  = 跟随指标事件记账，统计胜率与 R，不下单
+# live   = 真下单（需要 [execution] 的 binance key）
+mode = "signal"
+paper_start_equity = 10000
+live_dry_run = true              # live 模式下 true = 只打印请求不发送
+leverage = 3
+margin_type = "ISOLATED"
+binance_api_key = ""
+binance_api_secret = ""
+
+[notify]
+log_only = true                 # 永远写日志
+desktop = false                 # Windows 右下角弹窗
+send_bar_close = false          # 每根K线收盘的背景包要不要发
+retry = 2
+timeout_seconds = 8.0
+
+# Telegram（推荐：手机推送最快）
+telegram_bot_token = ""
+telegram_chat_id = ""
+telegram_proxy = ""             # 例 http://127.0.0.1:7890
+
+# 钉钉群机器人（支持加签）
+dingtalk_webhook = ""
+dingtalk_secret = ""
+
+# 企业微信群机器人
+wecom_webhook = ""
+
+# 飞书自定义机器人
+feishu_webhook = ""
+feishu_secret = ""
+
+# 邮件
+smtp_host = ""
+smtp_port = 465
+smtp_user = ""
+smtp_password = ""
+smtp_to = ""
+smtp_ssl = true
+
+[watch]
+heartbeat_seconds = 60
+alert_if_silent_minutes = 90     # 交易时段内这么久没包 → 告警
+alert_repeat_minutes = 180       # 告警重复间隔
+daily_report_at = "08:05"        # 本地时间，"" 关闭
+daily_report_tz = "Asia/Shanghai"
+retention_days = 120
+state_dir = "run"
+
+[store]
+db_path = "run/coilbot.db"
+archive_dir = "run/packets"
+
+# ============================================================
+# 品种精度。不写也行（会按价格量级推断），但实盘前建议写准。
+# ============================================================
+[instruments."BINANCE:BTCUSDT.P"]
+qty_step = 0.001
+min_qty = 0.001
+price_tick = 0.1
+
+[instruments."BINANCE:ETHUSDT.P"]
+qty_step = 0.01
+min_qty = 0.01
+price_tick = 0.01
+
+[instruments."BINANCE:SOLUSDT.P"]
+qty_step = 0.1
+min_qty = 0.1
+price_tick = 0.001

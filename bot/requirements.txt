@@ -1,0 +1,3 @@
+# 运行时依赖：除 tzdata 外全是 Python 标准库（3.11+）
+# Windows 上 Python 不自带时区数据库，装它才能算准亚盘/伦敦/纽约的开盘窗口。
+tzdata>=2024.1; sys_platform == "win32"

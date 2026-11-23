@@ -73,6 +73,29 @@ Webhook URL 填 `https://<隧道地址>/webhook?token=你的密码`。每个包�
 - 区间框、`① 突破`、挂单虚线、`② 橡皮筋 ↺`、`③ 进场`、止损 / 1R / 目标线、`🛡 保本`、出场结果（单位 R）。
 - 灰色 `✕` 标签写着为什么跳过：明天再来、突破K线太大、等回调、不在干净区、没先回踩。
 
+## 24/7 盯盘机器人（`bot/`）
+
+仓库里多了一个可以常驻的机器人：把警报数据包接进来，按 `agent/AGENT_PROMPT.md` 的规则**逐条**复核，
+给出 `LONG / SHORT / SKIP`，算好仓位，推到手机，全程记账。指标本身一行没改。
+
+```bash
+cd bot
+cp config.example.toml config.toml     # 填 [server] token 与 [notify]（Telegram/钉钉/飞书/邮件）
+python -m coilbot doctor               # 自检
+./tunnel.ps1                           # 给 TradingView 一个 https 地址（自动装 cloudflared）
+python -m coilbot serve                # 常驻；或 ./install_service.ps1 注册成计划任务（登录自启+崩溃重启）
+```
+
+| 能力 | 说明 |
+|---|---|
+| 规则复核 | 方向→区域→触发→仓位 13 条硬规则，逐条打印「过/不过」，全过才给方向 |
+| 仓位 | 风险 % → 数量（按品种步长向下取整），1R / 目标 R，名义上限 |
+| 通知 | Telegram / 钉钉 / 企微 / 飞书 / 邮件 / Windows 弹窗，单通道失败不影响主流程 |
+| 稳定 | token + 限流 + 幂等去重 + 原始包归档 + `/health`；守护线程管心跳、静默告警、每日战报 |
+| 执行 | `signal`（默认，只发信号）/ `paper`（记账统计）/ `live`（币安合约，默认 dry_run） |
+
+细节、配置项与排障见 [`bot/README.md`](bot/README.md)。
+
 ## 文件
 
 ```
@@ -82,6 +105,7 @@ coil-reclaim-indicator/
 ├── docs/packet-schema.md        数据包每个字段
 ├── examples/webhook_receiver.py 本地接收数据包（Python 标准库）
 ├── examples/sample_packet.json  示例数据包（示例数字）
+├── bot/                         24/7 盯盘机器人（见 bot/README.md）
 └── LICENSE                      MIT
 ```
 
