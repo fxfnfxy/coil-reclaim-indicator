@@ -18,14 +18,20 @@ TradingView 警报 ──webhook──▶ coilbot serve ──▶ 规则复核 �
 
 ## 5 分钟上手
 
+> 下面所有命令都要**先进入本目录 `bot/`** 再执行。不在这个目录会报 `No module named coilbot`、`找不到 config.example.toml`。
+> 不想记命令：直接双击 `bot\控制台.cmd`，用菜单完成全部操作。
+
 ```powershell
-cd bot
-Copy-Item config.example.toml config.toml     # 1) 配置
-#    改两处： [server] token = "一串随机字符"
-#            [notify] telegram_bot_token / telegram_chat_id
-python -m coilbot doctor                      # 2) 自检
-.\tunnel.ps1                                   # 3) 拿一个 https 地址（自动下载 cloudflared）
-python -m coilbot serve                        # 4) 启动
+# ① 进入 bot 目录（路径按你 clone 的位置改；这里是从任何地方都能进的写法）
+cd D:\workbuddy\coil-reclaim-indicator\bot
+
+# ② 生成配置并改两处： [server] token = "一串随机字符"
+#                     [notify] telegram_bot_token / telegram_chat_id
+Copy-Item config.example.toml config.toml
+
+python -m coilbot doctor        # ③ 自检
+.\tunnel.ps1                    # ④ 拿一个 https 地址（首次自动下载 cloudflared）
+python -m coilbot serve         # ⑤ 启动（或 .\install_service.ps1 注册成计划任务）
 ```
 
 TradingView 侧（每个品种/周期各建一个警报）：
@@ -144,6 +150,7 @@ bot/
 │   └── cli.py        命令行
 ├── tests/            31 个测试：规则/仓位/端到端
 ├── config.example.toml
+├── 控制台.cmd        双击即用的菜单（自检/启动/状态/通知/隧道/计划任务）
 ├── run_bot.ps1       带看护的启动脚本
 ├── install_service.ps1  计划任务（登录/开机自启 + 崩溃重启）
 ├── tunnel.ps1        cloudflared 隧道（临时 / 命名）

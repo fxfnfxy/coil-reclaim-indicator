@@ -79,12 +79,14 @@ Webhook URL 填 `https://<隧道地址>/webhook?token=你的密码`。每个包�
 给出 `LONG / SHORT / SKIP`，算好仓位，推到手机，全程记账。指标本身一行没改。
 
 ```bash
-cd bot
+cd bot                                 # 必须在仓库根目录先进入 bot/（或写全路径）
 cp config.example.toml config.toml     # 填 [server] token 与 [notify]（Telegram/钉钉/飞书/邮件）
 python -m coilbot doctor               # 自检
 ./tunnel.ps1                           # 给 TradingView 一个 https 地址（自动装 cloudflared）
 python -m coilbot serve                # 常驻；或 ./install_service.ps1 注册成计划任务（登录自启+崩溃重启）
 ```
+
+Windows 上不想敲命令：双击 `bot\控制台.cmd`，菜单里有自检 / 启动 / 状态 / 测试通知 / 起隧道 / 计划任务。
 
 | 能力 | 说明 |
 |---|---|
