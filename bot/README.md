@@ -53,7 +53,7 @@ Get-ScheduledTask -TaskName CoilBot | Get-ScheduledTaskInfo    # 看上次运行
 ```
 
 `run_bot.ps1` 自己也带看护循环（进程退出 → 10s 起，连续失败退避到 5 分钟），
-再叠一层看门狗：`install_service.ps1` 会同时注册 **`CoilBot-Watch`**，每 5 分钟打一次 `/health`，
+再叠一层看门狗：`install_service.ps1` 会同时注册 **`CoilBot-Watch`**，每 1 分钟打一次 `/health`，
 不通就重启主任务。三层的分工：
 
 | 层 | 管什么 |
@@ -162,7 +162,7 @@ bot/
 ├── config.example.toml
 ├── 控制台.cmd        双击即用的菜单（自检/启动/状态/通知/隧道/计划任务）
 ├── run_bot.ps1       带看护的启动脚本
-├── health_check.ps1  看门狗：健康检查 + 自动拉起（CoilBot-Watch 每 5 分钟调用）
+├── health_check.ps1  看门狗：健康检查 + 自动拉起（CoilBot-Watch 每 1 分钟调用）
 ├── install_service.ps1  计划任务（登录/开机自启 + 崩溃重启）
 ├── tunnel.ps1        cloudflared 隧道（临时 / 命名）
 └── README.md
@@ -182,6 +182,7 @@ bot/
 | 现象 | 先看这里 |
 |---|---|
 | `/health` 连不上 | 进程在不在：`Get-ScheduledTask -TaskName CoilBot \| Get-ScheduledTaskInfo`；端口是否被占 |
+| 浏览器打开隧道地址显示 502 Bad Gateway | 隧道活着但本地没应答：curl http://127.0.0.1:18080/health。看门狗最多 1 分钟会拉起；急就 .\health_check.ps1 |
 | 任务 `State=Ready` 但服务没跑 | 被外部结束过。跑一次 `.\health_check.ps1`，或 `Start-ScheduledTask -TaskName CoilBot`；Watch 任务每 5 分钟也会自动处理 |
 | 一直收不到包 | TradingView 警报是否还启用；隧道 URL 是否变了；`/health` 里 `received` 是否增长；`run\tunnel.log` |
 | 收到包但全 SKIP | `python -m coilbot status` 看 verdict；用 `judge` 命令看是哪条规则没过 |
