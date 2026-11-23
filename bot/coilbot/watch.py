@@ -77,6 +77,7 @@ class Watchdog:
         self.state_dir = Path(config.watch.state_dir)
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self._last_silence_alert: datetime | None = None
+        self._last_report_day = self._initial_report_day()
 
     # ------------------------------------------------------------ 生命周期
     def start(self) -> None:
@@ -91,14 +92,13 @@ class Watchdog:
 
     def _loop(self) -> None:
         interval = max(10, self.config.watch.heartbeat_seconds)
-        last_report_day = ""
         last_prune = datetime.now(timezone.utc) - timedelta(days=1)
         while not self._stop.wait(interval):
             now = datetime.now(timezone.utc)
             try:
                 self._heartbeat(now)
                 self._check_silence(now)
-                last_report_day = self._maybe_daily_report(now, last_report_day)
+                self._maybe_daily_report(now)
                 if (now - last_prune).total_seconds() > 86400:
                     removed = self.engine.store.prune(self.config.watch.retention_days)
                     if removed:
@@ -148,31 +148,46 @@ class Watchdog:
         self.engine.store.record_alert("warn", title, body)
 
     # ------------------------------------------------------------ 日报
-    def _maybe_daily_report(self, now: datetime, last_day: str) -> str:
-        cfg = self.config.watch
-        if not cfg.daily_report_at:
-            return last_day
+    def _report_time(self) -> tuple[int, int] | None:
+        raw = self.config.watch.daily_report_at
+        if not raw:
+            return None
         try:
-            hour, minute = (int(part) for part in cfg.daily_report_at.split(":", 1))
+            hour, minute = (int(part) for part in raw.split(":", 1))
         except ValueError:
-            return last_day
-        try:
-            local = now.astimezone(ZoneInfo(cfg.daily_report_tz))
-        except Exception:  # noqa: BLE001
-            tzinfo, _exact = get_tz(cfg.daily_report_tz)
-            local = now.astimezone(tzinfo)
+            return None
+        return hour, minute
+
+    def _initial_report_day(self) -> str:
+        """启动时如果今天的日报时间已经过了，就当今天发过，避免每次重启刷一条。"""
+        window = self._report_time()
+        if window is None:
+            return ""
+        tzinfo, _exact = get_tz(self.config.watch.daily_report_tz)
+        local = datetime.now(timezone.utc).astimezone(tzinfo)
+        if local.hour * 60 + local.minute >= window[0] * 60 + window[1]:
+            return local.strftime("%Y-%m-%d")
+        return ""
+
+    def _maybe_daily_report(self, now: datetime) -> None:
+        window = self._report_time()
+        if window is None:
+            return
+        hour, minute = window
+        tzinfo, _exact = get_tz(self.config.watch.daily_report_tz)
+        local = now.astimezone(tzinfo)
         day_key = local.strftime("%Y-%m-%d")
-        if local.hour * 60 + local.minute < hour * 60 + minute or last_day == day_key:
-            return last_day
+        if local.hour * 60 + local.minute < hour * 60 + minute or self._last_report_day == day_key:
+            return
 
         since = now - timedelta(hours=24)
-        window = self.engine.store.report_window(since)
+        report = self.engine.store.report_window(since)
         paper = self.engine.paper.summary(self.engine.store)
         lines = [
-            f"过去 24 小时：收到 {sum(window['by_verdict'].values())} 个包",
-            f"结论分布：{window['by_verdict'] or '无'}",
-            f"事件分布：{window['by_event'] or '无'}",
-            f"品种：{', '.join(f'{s}×{n}' for s, n in window['symbols']) or '无'}",
+            f"过去 24 小时：收到 {sum(report['by_verdict'].values())} 个包",
+            f"结论分布：{report['by_verdict'] or '无'}",
+            f"事件分布：{report['by_event'] or '无'}",
+            f"品种：{', '.join(f'{s}×{n}' for s, n in report['symbols']) or '无'}",
             "",
             f"纸面：已平 {paper['closed']} 笔 · 胜率 {paper['win_rate']:.1f}% · 合计 {paper['total_r']:+.2f}R · "
             f"权益 {paper['equity']:.2f} USDT",
@@ -181,4 +196,4 @@ class Watchdog:
         title = f"每日战报 · {day_key}"
         self.engine.notifier.send(title, "\n".join(lines), level="info")
         self.engine.store.record_alert("info", title, "\n".join(lines))
-        return day_key
+        self._last_report_day = day_key

@@ -35,7 +35,8 @@ function Test-Admin {
 
 if ($Unregister) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-    Write-Host "已删除计划任务 $TaskName" -ForegroundColor Yellow
+    Unregister-ScheduledTask -TaskName "$TaskName-Watch" -Confirm:$false -ErrorAction SilentlyContinue
+    Write-Host "已删除计划任务 $TaskName 与 $TaskName-Watch" -ForegroundColor Yellow
     return
 }
 if ($Stop) {
@@ -87,9 +88,41 @@ Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
     -Principal $principal -Settings $settings `
     -Description "Coil Reclaim 24/7 盯盘机器人（webhook + 规则复核 + 通知）" -Force | Out-Null
 
+# ---- 看门狗：每 5 分钟健康检查，不健康就拉起主任务 ----
+# 计划任务自己只在「启动失败」时重启；进程被外部结束（Ctrl+C / 任务管理器 / 系统更新）
+# 之后任务会变成 Ready 不再自起，这个洞由它补。
+$watchScript = Join-Path $BotDir "health_check.ps1"
+$watchOnline = $false
+if (Test-Path $watchScript) {
+    $portFromConfig = 18080
+    if (Test-Path $configFull) {
+        $m = Select-String -Path $configFull -Pattern '^\s*port\s*=\s*(\d+)' | Select-Object -First 1
+        if ($m) { $portFromConfig = [int]$m.Matches[0].Groups[1].Value }
+    }
+    $watchAction = New-ScheduledTaskAction `
+        -Execute "powershell.exe" `
+        -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watchScript`" -Quiet -Port $portFromConfig -TaskName $TaskName" `
+        -WorkingDirectory $BotDir
+    $watchTrigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(3)) `
+        -RepetitionInterval (New-TimeSpan -Minutes 5) `
+        -RepetitionDuration (New-TimeSpan -Days 3650)
+    $watchSettings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
+        -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
+    try {
+        Register-ScheduledTask -TaskName "$TaskName-Watch" -Action $watchAction -Trigger $watchTrigger `
+            -Principal $principal -Settings $watchSettings `
+            -Description "看门狗：每 5 分钟检查 CoilBot 健康，不通则重启" -Force | Out-Null
+        $watchOnline = $true
+    } catch {
+        Write-Host "看门狗注册失败（不影响主任务）：$_" -ForegroundColor Yellow
+    }
+}
+
 Write-Host "已注册计划任务：$TaskName" -ForegroundColor Green
 Write-Host "  触发    ：$(if ($AtStartup) { '开机后 30 秒' } else { '登录后 20 秒' })"
 Write-Host "  失败重启：每 1 分钟，最多 999 次"
+Write-Host "  看门狗  ：$(if ($watchOnline) { "$TaskName-Watch 每 5 分钟健康检查，挂了自动拉起" } else { '未注册' })"
 Write-Host "  运行脚本：$runScript"
 Write-Host ""
 Write-Host "下一步：" -ForegroundColor Cyan

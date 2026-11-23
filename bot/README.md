@@ -53,7 +53,17 @@ Get-ScheduledTask -TaskName CoilBot | Get-ScheduledTaskInfo    # 看上次运行
 ```
 
 `run_bot.ps1` 自己也带看护循环（进程退出 → 10s 起，连续失败退避到 5 分钟），
-两层兜底：计划任务管「进程没了」，脚本管「进程卡死退出」。
+再叠一层看门狗：`install_service.ps1` 会同时注册 **`CoilBot-Watch`**，每 5 分钟打一次 `/health`，
+不通就重启主任务。三层的分工：
+
+| 层 | 管什么 |
+|---|---|
+| 计划任务 `CoilBot` | 登录自启；启动失败每分钟重试 |
+| 计划任务 `CoilBot-Watch` | 进程被外部结束（Ctrl+C / 任务管理器 / 系统更新）后**没在跑** → 拉起 |
+| `run_bot.ps1` 循环 | python 崩了但 wrapper 还在 → 10s 内重启（退避到 5 分钟） |
+
+> 踩过的坑：计划任务只在「启动失败」时按 `RestartCount` 重启，进程被外部终止后任务会变成 `Ready` 不再自起；
+> 这正是加 `CoilBot-Watch` 的原因。
 
 健康检查：
 
@@ -152,6 +162,7 @@ bot/
 ├── config.example.toml
 ├── 控制台.cmd        双击即用的菜单（自检/启动/状态/通知/隧道/计划任务）
 ├── run_bot.ps1       带看护的启动脚本
+├── health_check.ps1  看门狗：健康检查 + 自动拉起（CoilBot-Watch 每 5 分钟调用）
 ├── install_service.ps1  计划任务（登录/开机自启 + 崩溃重启）
 ├── tunnel.ps1        cloudflared 隧道（临时 / 命名）
 └── README.md
@@ -171,6 +182,7 @@ bot/
 | 现象 | 先看这里 |
 |---|---|
 | `/health` 连不上 | 进程在不在：`Get-ScheduledTask -TaskName CoilBot \| Get-ScheduledTaskInfo`；端口是否被占 |
+| 任务 `State=Ready` 但服务没跑 | 被外部结束过。跑一次 `.\health_check.ps1`，或 `Start-ScheduledTask -TaskName CoilBot`；Watch 任务每 5 分钟也会自动处理 |
 | 一直收不到包 | TradingView 警报是否还启用；隧道 URL 是否变了；`/health` 里 `received` 是否增长；`run\tunnel.log` |
 | 收到包但全 SKIP | `python -m coilbot status` 看 verdict；用 `judge` 命令看是哪条规则没过 |
 | 静默告警一直响 | 时段窗口内确实没包 → 检查警报；或把 `alert_if_silent_minutes` 调大 |
